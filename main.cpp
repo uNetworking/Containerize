@@ -63,6 +63,7 @@ int main(int argc, char **argv)
                           ("from", value<string>(&from)->value_name("<image>"), "Derive from image <image>, default is scratch")
                           ("tar", "Tar container instead of zip")
                           ("filename", value<string>(&output)->value_name("<file name>"), "Output filename without extension")
+                          ("essentials", "Base container on busybox, a minimal <3mb image")
                           ("help", "Show this help");
 
         hidden.add_options()("cmd", value<vector<string>>());
@@ -77,10 +78,13 @@ int main(int argc, char **argv)
 
         if(!vm.size() || vm.count("help"))
         {
-            cout << "Usage: containerize [options] command line" << endl << endl;
+            cout << "Usage: containerize [options] ELF args.." << endl << endl;
             cout << options << endl;
             return 0;
         }
+
+        if(vm.count("from") == 0 && vm.count("essentials"))
+            from = "busybox";
 
         tar = vm.count("tar");
         cmd = vm["cmd"].as<vector<string>>();
