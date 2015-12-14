@@ -130,8 +130,15 @@ int main(int argc, char **argv)
                 string driver;
                 fin >> driver;
 
-                for (string x : locate(driver)) {
+                for (string &x : locate(driver)) {
                     depsolve(x, files);
+                }
+
+                // Ugly haxx for nvidia driver
+                if (driver.substr(0, 16) == "libnvidia-opencl") {
+                    for (string &x : locate("libnvidia-compiler.so")) {
+                        files.insert(x);
+                    }
                 }
 
                 // Ugly haxx for intel driver
