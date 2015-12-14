@@ -148,6 +148,12 @@ int main(int argc, char **argv)
     }
 
     cmd[0] = resolveCommand(cmd[0]);
+
+    // Strip current path base
+    if (!cmd[0].compare(0, currentPath.length(), currentPath)) {
+        cmd[0] = cmd[0].substr(currentPath.length());
+    }
+
     depsolve(cmd[0], files);
     ofstream dockerfile("Dockerfile");
     dockerfile << "FROM " << (essentials ? "busybox" : from) << endl
