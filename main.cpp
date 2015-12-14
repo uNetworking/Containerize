@@ -31,6 +31,25 @@ using namespace boost::filesystem;
 using namespace boost::program_options;
 using namespace boost::algorithm;
 
+vector<string> locate(string elf)
+{
+    FILE *pipe = popen(("locate " + elf).c_str(), "r");
+    vector<string> lines;
+    string line;
+    for(int c; (c = fgetc(pipe)) != EOF; /*line += (char) c*/) {
+        if (c == '\n')
+        {
+            lines.push_back(line);
+            line.clear();
+        }
+        else {
+            line += (char) c;
+        }
+    }
+    pclose(pipe);
+    return lines;
+}
+
 void depsolve(string elf, set<string> &files)
 {
     files.insert(elf);
@@ -59,7 +78,7 @@ string resolveCommand(string command)
 int main(int argc, char **argv)
 {   
     int expose = -1;
-    bool tar = 0, essentials = 0;
+    bool tar = false, essentials = false, opencl = false;
     string output, from;
     vector<string> cmd;
     try
@@ -70,6 +89,7 @@ int main(int argc, char **argv)
                           ("tar", bool_switch(&tar), "Tar container instead of zip")
                           ("filename", value<string>(&output)->value_name("<filename>")->default_value("container"), "Output filename without extension")
                           ("essentials", bool_switch(&essentials), "Base container on busybox, a minimal <3mb image")
+                          ("opencl", bool_switch(&opencl), "Include /etc/OpenCL/vendors and its resolved content")
                           ("help", "Show this help");
 
         hidden.add_options()("cmd", value<vector<string>>(&cmd));
@@ -101,14 +121,40 @@ int main(int argc, char **argv)
         if(is_regular_file(it->status()))
             depsolve(it->path().string().substr(currentPath.length() + 1), files);
 
+    if (opencl) {
+        for(recursive_directory_iterator it("/etc/OpenCL/vendors"), end; it != end; it++)
+            if(is_regular_file(it->status()))
+            {
+                files.insert(it->path().string());
+                ifstream fin(it->path().string());
+                string driver;
+                fin >> driver;
+
+                for (string x : locate(driver)) {
+                    depsolve(x, files);
+                }
+
+                // Ugly haxx for intel driver
+                if (driver.substr(0, 10) == "/opt/intel") {
+                    for(recursive_directory_iterator it(path(driver).parent_path()), end; it != end; it++)
+                        if(is_regular_file(it->status())) {
+                            files.insert(it->path().string());
+                            //depsolve(it->path().string(), files);
+                        }
+                }
+
+                depsolve(driver, files);
+            }
+    }
+
     cmd[0] = resolveCommand(cmd[0]);
     depsolve(cmd[0], files);
     ofstream dockerfile("Dockerfile");
     dockerfile << "FROM " << (essentials ? "busybox" : from) << endl
         << "ADD . /" << endl << "CMD [\"" << join(cmd, "\", \"") << "\"]";
     if(expose != -1)
-        dockerfile << "EXPOSE " << expose << endl;
+        dockerfile << endl << "EXPOSE " << expose << endl;
     dockerfile.close();
 
-    system(("zip " + output + " " + join(files, " ") + " Dockerfile > /dev/null && rm Dockerfile").c_str());
+    system(((tar ? "tar " : "zip ") + output + " " + join(files, " ") + " Dockerfile > /dev/null && rm Dockerfile").c_str());
 }
